@@ -17,12 +17,12 @@ src/
 
   extract/
     no_memory.py         NoMemory: stores nothing, the lower-bound baseline. Implemented.
-    append_all.py        AppendAll. To implement.
+    append_all.py        AppendAll: stores each dialogue turn as one memory. Implemented.
     regex.py             Regex. To implement.
     ner.py               NER. To implement.
   retrieve/
     no_retrieval.py      NoRetrieval: retrieves nothing, pairs with NoMemory. Implemented.
-    tfidf.py             Tfidf. To implement.
+    tfidf.py             Tfidf: dependency-free cosine retrieval baseline. Implemented.
     word2vec.py          Word2vec. To implement.
     sentence_emb.py      SentenceEmb. To implement.
   reader.py              LocalLLMReader: local model. Implemented.
@@ -49,3 +49,22 @@ python run.py
 
 Rows whose methods are not implemented are skipped. Use `--subset N` to run only
 the first N dialogues.
+
+## Basic memory baseline
+
+`append_all+tfidf` is the first end-to-end memory baseline:
+
+1. `AppendAll` converts every dialogue turn into one `Memory`. Its text includes
+   the speaker and its metadata retains the session and timestamp.
+2. `Tfidf` indexes those memories and returns the top `k` memories with positive
+   cosine similarity to the question.
+3. The reader answers from the retrieved turns and the judge scores the answer.
+
+The implementation uses only the Python standard library; the local reader and
+judge models remain the only heavyweight runtime dependencies.
+
+Run the unit tests without loading a model:
+
+```bash
+python -m unittest discover -s tests -v
+```
