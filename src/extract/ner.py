@@ -12,6 +12,7 @@ import os
 from typing import List
 
 from ..schema import Dialogue, Extractor, Memory
+from .textfmt import memory_text
 
 # Default model. Override with NER_MODEL for a larger model.
 MODEL = os.environ.get("NER_MODEL", "en_core_web_sm")
@@ -25,9 +26,10 @@ SALIENT_LABELS = {
 class NER(Extractor):
     """Keep turns containing at least one salient named entity."""
 
-    def __init__(self, model_name: str = MODEL):
+    def __init__(self, model_name: str = MODEL, with_timestamp: bool = False):
         import spacy  # lazy import, mirrors LocalLLMReader
         self.nlp = spacy.load(model_name, disable=["parser", "lemmatizer", "attribute_ruler"])
+        self.with_timestamp = with_timestamp
 
     def extract(self, dialogue: Dialogue) -> List[Memory]:
         memories = []
@@ -37,7 +39,7 @@ class NER(Extractor):
             if not entities:
                 continue
             memories.append(Memory(
-                text=f"{turn.speaker}: {turn.text}",
+                text=memory_text(turn, self.with_timestamp),
                 source_dia_ids=[turn.dia_id],
                 meta={
                     "speaker": turn.speaker,
