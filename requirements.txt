@@ -1,2 +1,5 @@
 transformers    # LocalLLMReader + LocalLLMJudge
 torch            # LocalLLMReader + LocalLLMJudge
+spacy            # NER extractor; also: python -m spacy download en_core_web_sm
+gensim           # Word2vec retriever; model auto-downloads on first use
+sentence-transformers  # SentenceEmb retriever; model auto-downloads on first use
