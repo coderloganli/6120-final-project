@@ -9,7 +9,8 @@ from pathlib import Path
 
 from locomo.loader import load_locomo
 from src.pipeline import read_pass, judge_pass
-from src.metrics import summarize
+from src.metrics import exact_match, source_dia_ids, summarize, token_f1
+from src.report import render_console, write_reports
 
 from src.extract.no_memory import NoMemory
 from src.extract.append_all import AppendAll
@@ -30,7 +31,7 @@ RESULTS_DIR = Path(__file__).parent / "results"
 
 def _dump(name, preds):
     """Write per-question records for one combo to results/<name>.jsonl."""
-    with open(RESULTS_DIR / f"{name}.jsonl", "w") as f:
+    with open(RESULTS_DIR / f"{name}.jsonl", "w", encoding="utf-8") as f:
         for p in preds:
             f.write(json.dumps({
                 "conv_id": p.qa_item.conv_id,
@@ -39,6 +40,18 @@ def _dump(name, preds):
                 "gold": p.qa_item.gold_answer,
                 "answer": p.answer_text,
                 "correct": p.judge_label,
+                "judge_score": p.judge_score,
+                "exact_match": exact_match(p.answer_text, p.qa_item.gold_answer),
+                "token_f1": token_f1(p.answer_text, p.qa_item.gold_answer),
+                "gold_evidence_dia_ids": p.qa_item.evidence_dia_ids,
+                "retrieved_dia_ids": source_dia_ids(p.retrieved_memories),
+                "retrieved_memories": [
+                    {
+                        "text": memory.text,
+                        "source_dia_ids": memory.source_dia_ids,
+                    }
+                    for memory in p.retrieved_memories
+                ],
             }, ensure_ascii=False) + "\n")
 
 
@@ -112,11 +125,10 @@ def main():
     del judge
     _free_gpu()
 
-    # Report
-    print(f"\n{'combo':24} {'QA acc':>8}")
-    for name, m in rows:
-        print(f"{name:24} {m['qa_accuracy']:>8.3f}")
-    print(f"per-question records written to {RESULTS_DIR}")
+    # Reports
+    write_reports(rows, RESULTS_DIR, K)
+    print(f"\n{render_console(rows, K)}")
+    print(f"\nPer-question records and reports written to {RESULTS_DIR}")
 
 
 if __name__ == "__main__":

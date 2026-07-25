@@ -1,9 +1,9 @@
 import unittest
 
 from src.extract.append_all import AppendAll
-from src.pipeline import read_pass
+from src.pipeline import judge_pass, read_pass
 from src.retrieve.tfidf import Tfidf
-from src.schema import Dialogue, QAItem, Reader, Turn
+from src.schema import Dialogue, Judge, QAItem, Reader, Turn
 
 
 def _dialogue() -> Dialogue:
@@ -34,6 +34,11 @@ def _dialogue() -> Dialogue:
 class FirstContextReader(Reader):
     def answer(self, question, context):
         return context[0].text if context else "no context"
+
+
+class CorrectJudge(Judge):
+    def score(self, question, pred, gold):
+        return 0.9 if gold in pred else 0.0
 
 
 class AppendAllTests(unittest.TestCase):
@@ -100,7 +105,13 @@ class PipelineSmokeTests(unittest.TestCase):
         )
 
         self.assertEqual(len(records), 1)
-        self.assertIn("Marmalade", records[0][1])
+        self.assertIn("Marmalade", records[0].answer_text)
+        self.assertEqual(records[0].retrieved_memories[0].source_dia_ids, ["D1:1"])
+
+        predictions = judge_pass(records, CorrectJudge())
+        self.assertEqual(predictions[0].judge_label, 1)
+        self.assertEqual(predictions[0].judge_score, 0.9)
+        self.assertEqual(predictions[0].retrieved_memories[0].source_dia_ids, ["D1:1"])
 
 
 if __name__ == "__main__":

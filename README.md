@@ -68,3 +68,28 @@ Run the unit tests without loading a model:
 ```bash
 python -m unittest discover -s tests -v
 ```
+
+## Evaluation and reports
+
+Each run reports complementary answer and retrieval metrics:
+
+- **Judge accuracy / score:** semantic correctness from the local LLM judge.
+- **Exact match and token F1:** deterministic lexical answer metrics after
+  lowercasing and punctuation/article normalization.
+- **Evidence Hit@K, Precision@K, Recall@K, full Recall@K, and MRR:** retrieval
+  quality against LOCOMO evidence turn IDs. These are macro-averaged only over
+  questions with gold evidence.
+- **Average memories and empty retrieval rate:** context usage diagnostics over
+  all questions.
+- **Category breakdown:** the same metrics for multi-hop, temporal, open-domain,
+  and single-hop questions.
+
+`python run.py` writes three report levels under `results/`:
+
+- `<extractor>+<retriever>.jsonl`: auditable per-question answers, scores, and
+  retrieved evidence.
+- `summary.json`: machine-readable aggregate metrics.
+- `report.md`: presentation-ready answer quality, retrieval quality, and
+  category comparison tables.
+
+The terminal also prints a compact overall comparison table.
