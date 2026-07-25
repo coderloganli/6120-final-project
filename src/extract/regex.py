@@ -24,6 +24,7 @@ import re
 from typing import List
 
 from ..schema import Dialogue, Extractor, Memory
+from .textfmt import memory_text
 
 PATTERNS = {
     # "I went to a support group yesterday", "I ran a charity race"
@@ -54,17 +55,59 @@ PATTERNS = {
 }
 
 
+# v2: data-driven revision after per-pattern analysis on LOCOMO gold evidence.
+# Changes, each backed by the analysis:
+# - "we" support everywhere: missed-evidence review showed shared activities
+#   ("We made pizza!") are consistently phrased with we/our, which v1 skipped
+# - contraction support: v1's "\bI\s+" never matched "I've worked" because of
+#   the apostrophe, losing perfect-tense facts
+# - state tightened: v1 state had the worst volume/precision ratio (17.8% of
+#   turns at 32.6% precision); v2 excludes discourse fillers ("I'm so glad",
+#   "I'm off to ...") via a lookahead
+PATTERNS_V2 = {
+    "past_event": re.compile(
+        r"\b(?:I|we)(?:'ve)?\s+(?:went|got|ran|made|took|saw|met|had|did|bought|"
+        r"sold|started|finished|joined|visited|tried|found|won|lost|moved|adopted|"
+        r"read|wrote|quit|left|began|became|broke|spoke|taught|thought|felt|kept|"
+        r"held|been|done|\w+ed)\b",
+        re.IGNORECASE,
+    ),
+    "state": re.compile(
+        r"\b(?:I|we)\s*(?:'m|'re|am|are|was|were)\b"
+        r"(?!\s+(?:so\s+|really\s+|very\s+)?"
+        r"(?:glad|happy|sorry|sure|excited|proud of you|off\b|gonna|going to))",
+        re.IGNORECASE,
+    ),
+    "preference": re.compile(
+        r"\b(?:I|we)(?:'d)?\s+(?:love|like|enjoy|hate|dislike|prefer|want|hope|"
+        r"plan|need|wish)\b",
+        re.IGNORECASE,
+    ),
+    "possessive": re.compile(r"\b(?:my|our)\s+\w+", re.IGNORECASE),
+    "temporal": PATTERNS["temporal"],
+    "plan": PATTERNS["plan"],
+}
+
+VERSIONS = {"v1": PATTERNS, "v2": PATTERNS_V2}
+
+
 class Regex(Extractor):
     """Keep turns matching at least one information-bearing pattern."""
+
+    def __init__(self, version: str = "v1", with_timestamp: bool = False):
+        if version not in VERSIONS:
+            raise ValueError(f"version must be one of {tuple(VERSIONS)}, got {version!r}")
+        self.patterns = VERSIONS[version]
+        self.with_timestamp = with_timestamp
 
     def extract(self, dialogue: Dialogue) -> List[Memory]:
         memories = []
         for turn in dialogue.turns:
-            matched = [name for name, pattern in PATTERNS.items() if pattern.search(turn.text)]
+            matched = [name for name, pattern in self.patterns.items() if pattern.search(turn.text)]
             if not matched:
                 continue
             memories.append(Memory(
-                text=f"{turn.speaker}: {turn.text}",
+                text=memory_text(turn, self.with_timestamp),
                 source_dia_ids=[turn.dia_id],
                 meta={
                     "speaker": turn.speaker,
