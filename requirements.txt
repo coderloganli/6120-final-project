@@ -1,2 +1,3 @@
 transformers    # LocalLLMReader + LocalLLMJudge
 torch            # LocalLLMReader + LocalLLMJudge
+spacy            # NER extractor; also: python -m spacy download en_core_web_sm
