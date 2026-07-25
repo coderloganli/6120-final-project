@@ -6,9 +6,18 @@ Separating them keeps only one model resident at a time.
 """
 from __future__ import annotations
 
-from typing import Dict, List, Tuple
+from typing import Dict, List
 
-from .schema import Dialogue, Extractor, Judge, Prediction, QAItem, Reader, Retriever
+from .schema import (
+    Dialogue,
+    Extractor,
+    Judge,
+    Prediction,
+    QAItem,
+    Reader,
+    ReadRecord,
+    Retriever,
+)
 
 
 def read_pass(
@@ -18,23 +27,34 @@ def read_pass(
     retriever: Retriever,
     reader: Reader,
     k: int = 5,
-) -> List[Tuple[QAItem, str]]:
-    """Run extract, retrieve, and read. Return qa, answer records."""
-    records: List[Tuple[QAItem, str]] = []
+) -> List[ReadRecord]:
+    """Run extract, retrieve, and read while retaining retrieval provenance."""
+    records: List[ReadRecord] = []
     for dlg in dialogues:
         memories = extractor.extract(dlg)
         retriever.index(memories)
         for qa in qa_by_conv[dlg.conv_id]:
             ctx = retriever.retrieve(qa.question, k)
             answer = reader.answer(qa.question, ctx)
-            records.append((qa, answer))
+            records.append(ReadRecord(
+                qa_item=qa,
+                answer_text=answer,
+                retrieved_memories=ctx,
+            ))
     return records
 
 
-def judge_pass(records: List[Tuple[QAItem, str]], judge: Judge) -> List[Prediction]:
+def judge_pass(records: List[ReadRecord], judge: Judge) -> List[Prediction]:
     """Score each qa, answer record into a Prediction."""
     preds: List[Prediction] = []
-    for qa, answer in records:
-        score = judge.score(qa.question, answer, qa.gold_answer)
-        preds.append(Prediction(qa_item=qa, answer_text=answer, judge_label=1 if score >= 0.5 else 0))
+    for record in records:
+        qa = record.qa_item
+        score = judge.score(qa.question, record.answer_text, qa.gold_answer)
+        preds.append(Prediction(
+            qa_item=qa,
+            answer_text=record.answer_text,
+            judge_label=1 if score >= 0.5 else 0,
+            judge_score=score,
+            retrieved_memories=record.retrieved_memories,
+        ))
     return preds

@@ -44,10 +44,19 @@ class QAItem:
 
 
 @dataclass
+class ReadRecord:
+    qa_item: QAItem
+    answer_text: str
+    retrieved_memories: List[Memory]
+
+
+@dataclass
 class Prediction:
     qa_item: QAItem
     answer_text: str
     judge_label: int                # 1 if correct, else 0
+    judge_score: float = 0.0
+    retrieved_memories: List[Memory] = field(default_factory=list)
 
 
 class Extractor(ABC):
