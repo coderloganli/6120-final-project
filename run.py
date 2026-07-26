@@ -38,12 +38,14 @@ def _w2v_vectors():
     return _shared["w2v"]
 
 
-def _sent_encoder():
-    if "sent" not in _shared:
+def _sent_encoder(name):
+    if name not in _shared:
         from sentence_transformers import SentenceTransformer
-        _shared["sent"] = SentenceTransformer(SENT_MODEL)
-    return _shared["sent"]
+        _shared[name] = SentenceTransformer(name)
+    return _shared[name]
 
+
+E5_MODEL = "intfloat/e5-small-v2"
 
 RETRIEVERS = {
     "no_retrieval": NoRetrieval,
@@ -51,7 +53,9 @@ RETRIEVERS = {
     "bm25": Bm25,
     "word2vec": lambda: Word2vec(keyed_vectors=_w2v_vectors()),                        # uniform pooling
     "word2vec_tfidf": lambda: Word2vec(keyed_vectors=_w2v_vectors(), weighting="tfidf"),
-    "sentence_emb": lambda: SentenceEmb(model_name=SENT_MODEL, encoder=_sent_encoder()),
+    "sentence_emb": lambda: SentenceEmb(model_name=SENT_MODEL, encoder=_sent_encoder(SENT_MODEL)),
+    # retrieval-specialized asymmetric encoder; query/passage prefixes applied automatically
+    "sentence_emb_e5": lambda: SentenceEmb(model_name=E5_MODEL, encoder=_sent_encoder(E5_MODEL)),
 }
 K = 5
 RESULTS_ROOT = Path(__file__).parent / "results"
@@ -94,9 +98,13 @@ def _dump(out_dir, name, preds):
             }, ensure_ascii=False) + "\n")
 
 
-def _combos(extractors):
+def _combos(extractors, only_extractors=None, only_retrievers=None):
     for ename in extractors:
+        if only_extractors and ename not in only_extractors:
+            continue
         for rname in RETRIEVERS:
+            if only_retrievers and rname not in only_retrievers:
+                continue
             # no_memory pairs only with no_retrieval; real methods with real methods
             if (ename == "no_memory") != (rname == "no_retrieval"):
                 continue
@@ -129,7 +137,18 @@ def main():
                     help="skip the figure and table generation step")
     ap.add_argument("--batch-size", type=int, default=16,
                     help="how many questions the reader and judge process at once")
+    ap.add_argument("--extractors", nargs="+", default=None, metavar="NAME",
+                    help="run only these extractors (default all)")
+    ap.add_argument("--retrievers", nargs="+", default=None, metavar="NAME",
+                    help="run only these retrievers (default all)")
     args = ap.parse_args()
+
+    for name in args.extractors or []:
+        if name not in _build_extractors(False):
+            ap.error(f"unknown extractor {name!r}")
+    for name in args.retrievers or []:
+        if name not in RETRIEVERS:
+            ap.error(f"unknown retriever {name!r}")
 
     out_dir = RESULTS_ROOT / (args.name or datetime.now().strftime("%Y%m%d-%H%M%S"))
     extractors = _build_extractors(args.timestamp)
@@ -143,7 +162,7 @@ def main():
     except Exception as e:
         print(f"reader unavailable: {type(e).__name__}: {e}")
         return
-    combos = list(_combos(extractors))
+    combos = list(_combos(extractors, args.extractors, args.retrievers))
     print(f"Pass 1: reader answering {len(combos)} combos", flush=True)
     staged = []  # list of name, records
     for i, (ename, rname) in enumerate(combos, 1):
