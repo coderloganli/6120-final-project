@@ -80,8 +80,15 @@ class Reader(ABC):
     def answer(self, question: str, context: List[Memory]) -> str:
         ...
 
+    def answer_batch(self, questions: List[str], contexts: List[List[Memory]]) -> List[str]:
+        return [self.answer(q, c) for q, c in zip(questions, contexts)]
+
 
 class Judge(ABC):
     @abstractmethod
     def score(self, question: str, pred: str, gold: str) -> float:
         ...
+
+    def score_batch(self, triples: List) -> List[float]:
+        # triples: list of (question, pred, gold)
+        return [self.score(q, p, g) for q, p, g in triples]

@@ -7,14 +7,15 @@ import os
 
 from src.schema import Judge
 
-# Default model. Override with JUDGE_MODEL.
-MODEL = os.environ.get("JUDGE_MODEL", "Qwen/Qwen2.5-7B-Instruct")
+# A different family from the reader avoids self-preference. Override with JUDGE_MODEL. 
+MODEL = os.environ.get("JUDGE_MODEL", "mistralai/Mistral-7B-Instruct-v0.3")
 
-_SYSTEM = (
+# One user turn, no system role, so any chat template works.
+_PROMPT = (
     "You grade a question-answering system. Decide whether the predicted answer "
-    "means the same as the gold answer. Reply with exactly one word: yes or no."
+    "means the same as the gold answer. Reply with exactly one word: yes or no.\n\n"
+    "Question: {question}\nGold answer: {gold}\nPredicted answer: {pred}"
 )
-_USER = "Question: {question}\nGold answer: {gold}\nPredicted answer: {pred}"
 
 
 class LocalLLMJudge(Judge):
@@ -28,16 +29,24 @@ class LocalLLMJudge(Judge):
         else:
             device, dtype = "cpu", torch.float32
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
+        if self.tokenizer.pad_token is None:
+            self.tokenizer.pad_token = self.tokenizer.eos_token
+        self.tokenizer.padding_side = "left"   # left-pad so generations align (decoder-only)
         self.model = AutoModelForCausalLM.from_pretrained(model_name, torch_dtype=dtype).to(device)
 
-    def score(self, question: str, pred: str, gold: str) -> float:
-        messages = [
-            {"role": "system", "content": _SYSTEM},
-            {"role": "user", "content": _USER.format(question=question, gold=gold, pred=pred)},
+    def score_batch(self, triples) -> list:
+        convos = [
+            [{"role": "user", "content": _PROMPT.format(question=q, gold=g, pred=p)}]
+            for q, p, g in triples
         ]
-        text = self.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-        inputs = self.tokenizer(text, return_tensors="pt").to(self.model.device)
+        inputs = self.tokenizer.apply_chat_template(
+            convos, add_generation_prompt=True, return_tensors="pt",
+            padding=True, return_dict=True,
+        ).to(self.model.device)
         out = self.model.generate(**inputs, max_new_tokens=3, do_sample=False)
-        gen = out[0][inputs.input_ids.shape[1]:]
-        verdict = self.tokenizer.decode(gen, skip_special_tokens=True).strip().lower()
-        return 1.0 if verdict.startswith("y") else 0.0
+        gen = out[:, inputs["input_ids"].shape[1]:]
+        verdicts = [self.tokenizer.decode(g, skip_special_tokens=True).strip().lower() for g in gen]
+        return [1.0 if v.startswith("y") else 0.0 for v in verdicts]
+
+    def score(self, question: str, pred: str, gold: str) -> float:
+        return self.score_batch([(question, pred, gold)])[0]

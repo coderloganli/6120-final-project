@@ -3,7 +3,8 @@
 ## Structure
 
 ```
-run.py                   Runs every extract x retrieve combination, prints QA accuracy.
+run.py                   Runs every extract x retrieve combination, then writes figures and tables.
+analyze.py               Regenerates figures and tables from a saved run, without rerunning models.
 
 locomo/
   locomo10.json          LOCOMO dataset.
@@ -12,26 +13,53 @@ locomo/
 src/
   schema.py              Data structures and the four stage interfaces:
                          Extractor, Retriever, Reader, Judge.
-  pipeline.py            read_pass and judge_pass over the data.
-  metrics.py             summarize: overall QA accuracy.
+  pipeline.py            read_pass and judge_pass over the data, in batches.
+  metrics.py             summarize: answer, retrieval, and per-category metrics.
+  report.py              Console table, Markdown, and JSON reports.
 
   extract/
-    no_memory.py         NoMemory: stores nothing, the lower-bound baseline. Implemented.
-    append_all.py        AppendAll: stores each dialogue turn as one memory. Implemented.
-    regex.py             Regex. To implement.
-    ner.py               NER. To implement.
+    no_memory.py         NoMemory: stores nothing, the lower-bound baseline.
+    append_all.py        AppendAll: stores each dialogue turn as one memory.
+    regex.py             Regex: keeps turns matching hand-written patterns.
+    ner.py               NER: keeps turns that mention a named entity.
+    textfmt.py           Shared memory-text formatting.
   retrieve/
-    no_retrieval.py      NoRetrieval: retrieves nothing, pairs with NoMemory. Implemented.
-    tfidf.py             Tfidf: dependency-free cosine retrieval baseline. Implemented.
-    word2vec.py          Word2vec. To implement.
-    sentence_emb.py      SentenceEmb. To implement.
-  reader.py              LocalLLMReader: local model. Implemented.
-  judge.py               LocalLLMJudge: local model. Implemented.
+    no_retrieval.py      NoRetrieval: retrieves nothing, pairs with NoMemory.
+    tfidf.py             Tfidf: TF-IDF cosine retrieval.
+    bm25.py              Bm25: BM25 retrieval.
+    word2vec.py          Word2vec: averaged static embeddings.
+    sentence_emb.py      SentenceEmb: sentence-transformer embeddings.
+  reader.py              LocalLLMReader: local model that answers questions.
+  judge.py               LocalLLMJudge: local model that scores answers.
+
+tests/                   Unit tests for extractors, retrievers, metrics, and reports.
 ```
 
-The six unimplemented method files are skeletons: a class subclassing its
-interface with `raise NotImplementedError`. Fill in the method body to implement
-a method.
+Every method implements an interface in `schema.py`. To add a new extractor or
+retriever, subclass its interface and register it in `run.py`.
+
+## Setup
+
+Create a virtual environment and install the dependencies. Use Python 3.11;
+torch has no wheels for 3.14.
+
+```bash
+python3.11 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+.venv/bin/python -m spacy download en_core_web_sm
+```
+
+Run everything with `.venv/bin/python`, for example `.venv/bin/python run.py`.
+
+Notes:
+
+- The reader, judge, and word2vec models download on first use into the shared
+  Hugging Face and gensim caches under your home directory, not into this repo.
+  The first run pulls tens of GB; later runs reuse the cache.
+- `.venv/` and `results/` are git-ignored and are not carried by `git clone` or a
+  plain folder copy. In a new location, recreate the venv with the commands
+  above. On the same machine the model cache is shared, so models are not
+  re-downloaded.
 
 ## Run
 
