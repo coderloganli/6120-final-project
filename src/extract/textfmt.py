@@ -2,7 +2,7 @@
 
 with_timestamp=True prepends the session date, giving the reader an anchor to
 resolve relative time expressions ("yesterday", "last year") into absolute
-dates — LOCOMO temporal gold answers are absolute. Falls back to the raw
+dates. LOCOMO temporal gold answers are absolute. Falls back to the raw
 LOCOMO date string when the parsed ISO date is unavailable.
 """
 from ..schema import Turn

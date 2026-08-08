@@ -31,7 +31,7 @@ def _overall_row(name: str, metrics: dict) -> List[str]:
         _percent(retrieval["evidence_hit_at_k"]),
         _percent(retrieval["evidence_recall_at_k"]),
         f"{retrieval['mrr']:.3f}",
-        _percent(retrieval["empty_retrieval_rate"]),
+        _percent(metrics["empty_retrieval_rate"]),
     ]
 
 
@@ -56,8 +56,8 @@ def _retrieval_row(name: str, metrics: dict) -> List[str]:
         _percent(retrieval["evidence_recall_at_k"]),
         _percent(retrieval["evidence_full_recall_at_k"]),
         f"{retrieval['mrr']:.3f}",
-        f"{retrieval['avg_memories_retrieved']:.2f}",
-        _percent(retrieval["empty_retrieval_rate"]),
+        f"{metrics['avg_memories_retrieved']:.2f}",
+        _percent(metrics["empty_retrieval_rate"]),
     ]
 
 

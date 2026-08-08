@@ -92,6 +92,10 @@ def _summarize_group(preds: List[Prediction]) -> dict:
         "token_f1": average([
             token_f1(pred.answer_text, pred.qa_item.gold_answer) for pred in preds
         ]),
+        # Corpus-wide retriever behavior, over all questions.
+        "avg_memories_retrieved": average([len(pred.retrieved_memories) for pred in preds]),
+        "empty_retrieval_rate": average([not pred.retrieved_memories for pred in preds]),
+        # Evidence metrics, over questions that provide gold evidence only.
         "retrieval": {
             "n_with_evidence": len(evidence_preds),
             "evidence_hit_at_k": average([
@@ -107,12 +111,6 @@ def _summarize_group(preds: List[Prediction]) -> dict:
                 scores["evidence_full_recall_at_k"] for scores in retrieval
             ]),
             "mrr": average([scores["mrr"] for scores in retrieval]),
-            "avg_memories_retrieved": average([
-                len(pred.retrieved_memories) for pred in preds
-            ]),
-            "empty_retrieval_rate": average([
-                not pred.retrieved_memories for pred in preds
-            ]),
         },
     }
 

@@ -129,6 +129,8 @@ def main():
                     help="skip the figure and table generation step")
     ap.add_argument("--batch-size", type=int, default=16,
                     help="how many questions the reader and judge process at once")
+    ap.add_argument("--combos", default=None,
+                    help="comma-separated combos to run, e.g. append_all+tfidf,ner+bm25; default all")
     args = ap.parse_args()
 
     out_dir = RESULTS_ROOT / (args.name or datetime.now().strftime("%Y%m%d-%H%M%S"))
@@ -144,6 +146,9 @@ def main():
         print(f"reader unavailable: {type(e).__name__}: {e}")
         return
     combos = list(_combos(extractors))
+    if args.combos:
+        wanted = set(args.combos.split(","))
+        combos = [(e, r) for e, r in combos if f"{e}+{r}" in wanted]
     print(f"Pass 1: reader answering {len(combos)} combos", flush=True)
     staged = []  # list of name, records
     for i, (ename, rname) in enumerate(combos, 1):
