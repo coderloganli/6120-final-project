@@ -3,7 +3,7 @@
 ## Structure
 
 ```
-run.py                   Runs every extract x retrieve combination, then writes figures and tables.
+demo.py                   Runs every extract x retrieve combination, then writes figures and tables.
 analyze.py               Regenerates figures and tables from a saved run, without rerunning models.
 
 locomo/
@@ -49,7 +49,7 @@ python3.11 -m venv .venv
 .venv/bin/python -m spacy download en_core_web_sm
 ```
 
-Run everything with `.venv/bin/python`, for example `.venv/bin/python run.py`.
+Run everything with `.venv/bin/python`, for example `.venv/bin/python demo.py`.
 
 Notes:
 
@@ -72,7 +72,7 @@ python -m locomo.loader
 Run every combination, including the no_memory lower bound:
 
 ```bash
-python run.py
+python demo.py
 ```
 
 Rows whose methods are not implemented are skipped. Use `--subset N` to run only
@@ -112,7 +112,7 @@ Each run reports complementary answer and retrieval metrics:
 - **Category breakdown:** the same metrics for multi-hop, temporal, open-domain,
   and single-hop questions.
 
-`python run.py` writes three report levels under `results/`:
+`python demo.py` writes three report levels under `results/`:
 
 - `<extractor>+<retriever>.jsonl`: auditable per-question answers, scores, and
   retrieved evidence.
