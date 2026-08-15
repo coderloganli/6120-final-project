@@ -13,6 +13,8 @@ def _metrics():
         "judge_score": 0.5,
         "exact_match": 0.25,
         "token_f1": 0.75,
+        "avg_memories_retrieved": 2.0,
+        "empty_retrieval_rate": 0.0,
         "retrieval": {
             "n_with_evidence": 2,
             "evidence_hit_at_k": 1.0,
@@ -20,8 +22,6 @@ def _metrics():
             "evidence_recall_at_k": 0.75,
             "evidence_full_recall_at_k": 0.5,
             "mrr": 0.75,
-            "avg_memories_retrieved": 2.0,
-            "empty_retrieval_rate": 0.0,
         },
     }
     return {**group, "by_category": {"1": group}}

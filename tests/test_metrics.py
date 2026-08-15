@@ -76,8 +76,8 @@ class SummaryTests(unittest.TestCase):
         self.assertEqual(metrics["retrieval"]["evidence_recall_at_k"], 0.75)
         self.assertEqual(metrics["retrieval"]["evidence_full_recall_at_k"], 0.5)
         self.assertEqual(metrics["retrieval"]["mrr"], 0.75)
-        self.assertEqual(metrics["retrieval"]["avg_memories_retrieved"], 2)
-        self.assertEqual(metrics["retrieval"]["empty_retrieval_rate"], 0.0)
+        self.assertEqual(metrics["avg_memories_retrieved"], 2)
+        self.assertEqual(metrics["empty_retrieval_rate"], 0.0)
         self.assertEqual(set(metrics["by_category"]), {"1", "2"})
         self.assertEqual(metrics["by_category"]["1"]["qa_accuracy"], 1.0)
 
@@ -95,7 +95,7 @@ class SummaryTests(unittest.TestCase):
 
         self.assertEqual(metrics["retrieval"]["n_with_evidence"], 0)
         self.assertEqual(metrics["retrieval"]["evidence_hit_at_k"], 0.0)
-        self.assertEqual(metrics["retrieval"]["empty_retrieval_rate"], 1.0)
+        self.assertEqual(metrics["empty_retrieval_rate"], 1.0)
 
     def test_empty_predictions_are_safe(self):
         metrics = summarize([])
