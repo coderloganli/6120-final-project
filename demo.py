@@ -1,9 +1,10 @@
-"""Run one round of the experiment: extract x retrieve combinations on LOCOMO,
-then generate figures and tables.
+"""Run the full LOCOMO extraction x retrieval experiment.
 
 Two passes keep one model in memory at a time: load the reader and answer all
-questions, then load the judge and score all answers. Results go to a fresh
-results/<name> folder; analyze.generate then writes figures and tables there.
+questions, then load the judge and score all answers. By default, the script
+runs both the base and timestamp-augmented grids. Results go to
+results/<name>/{base,timestamp}; analyze.generate then writes figures and
+tables for each variant.
 """
 import argparse
 import json
@@ -23,9 +24,13 @@ from src.retrieve.no_retrieval import NoRetrieval
 from src.retrieve.tfidf import Tfidf
 from src.retrieve.bm25 import Bm25
 from src.retrieve.word2vec import Word2vec, MODEL as W2V_MODEL
-from src.retrieve.sentence_emb import SentenceEmb, MODEL as SENT_MODEL
+from src.retrieve.sentence_emb import SentenceEmb
 from src.reader import LocalLLMReader
 from src.judge import LocalLLMJudge
+
+# The two sentence encoders are separate retrievers in the experimental grid.
+MINILM_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
+E5_MODEL = "intfloat/e5-small-v2"
 
 # Heavy retriever models are loaded once and reused across all combos.
 _shared = {}
@@ -38,11 +43,12 @@ def _w2v_vectors():
     return _shared["w2v"]
 
 
-def _sent_encoder():
-    if "sent" not in _shared:
+def _sent_encoder(model_name):
+    key = f"sent:{model_name}"
+    if key not in _shared:
         from sentence_transformers import SentenceTransformer
-        _shared["sent"] = SentenceTransformer(SENT_MODEL)
-    return _shared["sent"]
+        _shared[key] = SentenceTransformer(model_name)
+    return _shared[key]
 
 
 RETRIEVERS = {
@@ -51,14 +57,21 @@ RETRIEVERS = {
     "bm25": Bm25,
     "word2vec": lambda: Word2vec(keyed_vectors=_w2v_vectors()),                        # uniform pooling
     "word2vec_tfidf": lambda: Word2vec(keyed_vectors=_w2v_vectors(), weighting="tfidf"),
-    "sentence_emb": lambda: SentenceEmb(model_name=SENT_MODEL, encoder=_sent_encoder()),
+    "sentence_emb": lambda: SentenceEmb(
+        model_name=MINILM_MODEL,
+        encoder=_sent_encoder(MINILM_MODEL),
+    ),
+    "sentence_emb_e5": lambda: SentenceEmb(
+        model_name=E5_MODEL,
+        encoder=_sent_encoder(E5_MODEL),
+    ),
 }
 K = 5
 RESULTS_ROOT = Path(__file__).parent / "results"
 
 
 def _build_extractors(with_timestamp):
-    # Factories keep construction lazy (per combo). --timestamp applies to all.
+    # Factories keep construction lazy (per combo).
     return {
         "no_memory": NoMemory,
         "append_all": lambda: AppendAll(with_timestamp=with_timestamp),
@@ -121,8 +134,11 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--subset", type=int, default=None,
                     help="run only the first N dialogues; default all")
-    ap.add_argument("--timestamp", action="store_true",
-                    help="prepend the session date to each memory")
+    variants = ap.add_mutually_exclusive_group()
+    variants.add_argument("--base-only", action="store_true",
+                          help="run only the base grid (default runs base and timestamp grids)")
+    variants.add_argument("--timestamp", action="store_true",
+                          help="run only the timestamp-augmented grid")
     ap.add_argument("--name", default=None,
                     help="output subfolder under results/; default is a timestamp")
     ap.add_argument("--no-figures", action="store_true",
@@ -134,10 +150,30 @@ def main():
     args = ap.parse_args()
 
     out_dir = RESULTS_ROOT / (args.name or datetime.now().strftime("%Y%m%d-%H%M%S"))
-    extractors = _build_extractors(args.timestamp)
     dialogues, qa = load_locomo()
     if args.subset:
         dialogues = dialogues[: args.subset]
+
+    if args.base_only:
+        experiment_variants = [("base", False)]
+    elif args.timestamp:
+        experiment_variants = [("timestamp", True)]
+    else:
+        experiment_variants = [("base", False), ("timestamp", True)]
+
+    selected = set(args.combos.split(",")) if args.combos else None
+    planned = []
+    for variant_name, with_timestamp in experiment_variants:
+        extractors = _build_extractors(with_timestamp)
+        for ename, rname in _combos(extractors):
+            combo_name = f"{ename}+{rname}"
+            if selected is not None and combo_name not in selected:
+                continue
+            # Timestamp augmentation has no effect on the no-memory baseline,
+            # so score that baseline only once in the base grid.
+            if with_timestamp and ename == "no_memory":
+                continue
+            planned.append((variant_name, combo_name, extractors[ename], RETRIEVERS[rname]))
 
     # Pass 1: reader answers every question
     try:
@@ -145,25 +181,21 @@ def main():
     except Exception as e:
         print(f"reader unavailable: {type(e).__name__}: {e}")
         return
-    combos = list(_combos(extractors))
-    if args.combos:
-        wanted = set(args.combos.split(","))
-        combos = [(e, r) for e, r in combos if f"{e}+{r}" in wanted]
-    print(f"Pass 1: reader answering {len(combos)} combos", flush=True)
-    staged = []  # list of name, records
-    for i, (ename, rname) in enumerate(combos, 1):
-        name = f"{ename}+{rname}"
-        print(f"  [read {i}/{len(combos)}] {name}", flush=True)
+    print(f"Pass 1: reader answering {len(planned)} configurations", flush=True)
+    staged = []  # list of variant, combo name, records
+    for i, (variant_name, combo_name, extractor_factory, retriever_factory) in enumerate(planned, 1):
+        display_name = f"{variant_name}:{combo_name}"
+        print(f"  [read {i}/{len(planned)}] {display_name}", flush=True)
         try:
-            extractor, retriever = extractors[ename](), RETRIEVERS[rname]()
+            extractor, retriever = extractor_factory(), retriever_factory()
             records = read_pass(dialogues, qa, extractor, retriever, reader, K, args.batch_size)
         except NotImplementedError:
-            print(f"  [skip] {name}: not implemented", flush=True)
+            print(f"  [skip] {display_name}: not implemented", flush=True)
             continue
         except Exception as e:
-            print(f"  [skip] {name}: {type(e).__name__}: {e}", flush=True)
+            print(f"  [skip] {display_name}: {type(e).__name__}: {e}", flush=True)
             continue
-        staged.append((name, records))
+        staged.append((variant_name, combo_name, records))
     del reader
     _free_gpu()
 
@@ -178,32 +210,41 @@ def main():
         print(f"judge unavailable: {type(e).__name__}: {e}")
         return
     out_dir.mkdir(parents=True, exist_ok=True)
-    print(f"Pass 2: judge scoring {len(staged)} combos", flush=True)
-    rows = []
-    for i, (name, records) in enumerate(staged, 1):
-        print(f"  [judge {i}/{len(staged)}] {name}", flush=True)
+    print(f"Pass 2: judge scoring {len(staged)} configurations", flush=True)
+    rows_by_variant = {name: [] for name, _ in experiment_variants}
+    for i, (variant_name, combo_name, records) in enumerate(staged, 1):
+        display_name = f"{variant_name}:{combo_name}"
+        print(f"  [judge {i}/{len(staged)}] {display_name}", flush=True)
         try:
             preds = judge_pass(records, judge, args.batch_size)
-            _dump(out_dir, name, preds)
-            rows.append((name, summarize(preds)))
+            variant_dir = out_dir / variant_name
+            variant_dir.mkdir(parents=True, exist_ok=True)
+            _dump(variant_dir, combo_name, preds)
+            rows_by_variant[variant_name].append((combo_name, summarize(preds)))
         except Exception as e:
-            print(f"  [skip] {name}: {type(e).__name__}: {e}", flush=True)
+            print(f"  [skip] {display_name}: {type(e).__name__}: {e}", flush=True)
     del judge
     _free_gpu()
 
-    # Reports
-    write_reports(rows, out_dir, K)
-    print(f"\n{render_console(rows, K)}")
-    print(f"\nPer-question records and reports written to {out_dir}")
+    # Write separate reports so existing analysis code can continue treating a
+    # configuration name as exactly <extractor>+<retriever>.
+    for variant_name, _ in experiment_variants:
+        rows = rows_by_variant[variant_name]
+        if not rows:
+            continue
+        variant_dir = out_dir / variant_name
+        write_reports(rows, variant_dir, K)
+        print(f"\n{variant_name.upper()}\n{render_console(rows, K)}")
 
-    # Figures and tables
-    if not args.no_figures:
-        try:
-            from analyze import generate
-            generate(out_dir)
-            print(f"Figures and tables written to {out_dir / 'figures'}")
-        except Exception as e:
-            print(f"(figures skipped: {type(e).__name__}: {e})")
+        if not args.no_figures:
+            try:
+                from analyze import generate
+                generate(variant_dir)
+                print(f"Figures and tables written to {variant_dir / 'figures'}")
+            except Exception as e:
+                print(f"(figures skipped for {variant_name}: {type(e).__name__}: {e})")
+
+    print(f"\nPer-question records and reports written under {out_dir}")
 
 
 if __name__ == "__main__":
